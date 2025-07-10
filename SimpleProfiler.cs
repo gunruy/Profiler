@@ -6,6 +6,7 @@ using UnityEngine.Profiling;
 using UnityEngine.Rendering;
 using System.Diagnostics;
 using System.Collections.Generic;
+using TMPro; // TextMeshPro desteği
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -17,7 +18,7 @@ public class DevProfilerFull : MonoBehaviour
 
     // UI elemanları için değişkenler
     private Text fpsText, gpuText, drawText, batchText, vertsText;
-    private Text usedMemText, peakMemText, limitMemText, managedMemText, nativeMemText, gcText, apiText, gpuNameText, threadText;
+    private Text usedMemText, peakMemText, limitMemText, managedMemText, nativeMemText, gcText, apiText, gpuNameText;
     private Image barUsed, barPeak;
     private FrameTiming[] frameTimings = new FrameTiming[1];
     private float deltaTime = 0.0f;
@@ -25,6 +26,11 @@ public class DevProfilerFull : MonoBehaviour
     private List<Image> frameHistory = new List<Image>();
     private int historyIndex = 0;
     private const int historyLength = 20;
+
+    // CPU kullanım hesaplama değişkenleri
+    private float lastTime;
+    private float lastTotalProcessorTime;
+    private TextMeshProUGUI cpuLabel;
 
     // Desteklenen dillerin enum'u
     public enum Language { Turkish, English, Arabic }
@@ -48,7 +54,7 @@ public class DevProfilerFull : MonoBehaviour
             ["GC"] = "GC Toplamaları",
             ["API"] = "API",
             ["GPUName"] = "GPU",
-            ["Threads"] = "İş Parçacığı"
+            ["CPU"] = "CPU Kullanımı"
         },
         [Language.English] = new()
         {
@@ -65,7 +71,7 @@ public class DevProfilerFull : MonoBehaviour
             ["GC"] = "GC Collections",
             ["API"] = "API",
             ["GPUName"] = "GPU",
-            ["Threads"] = "Threads"
+            ["CPU"] = "CPU Usage"
         },
         [Language.Arabic] = new()
         {
@@ -82,7 +88,7 @@ public class DevProfilerFull : MonoBehaviour
             ["GC"] = "تجميع القمامة",
             ["API"] = "واجهة برمجة التطبيقات",
             ["GPUName"] = "المعالج الرسومي",
-            ["Threads"] = "الخيوط"
+            ["CPU"] = "استخدام المعالج"
         }
     };
 
@@ -90,6 +96,11 @@ public class DevProfilerFull : MonoBehaviour
     void Start()
     {
         CreateUI();
+
+        // CPU hesaplama için başlangıç değerleri
+        Process process = Process.GetCurrentProcess();
+        lastTime = Time.realtimeSinceStartup;
+        lastTotalProcessorTime = (float)process.TotalProcessorTime.TotalSeconds;
     }
 
     // Her frame'de çalışan ana güncelleme metodu
@@ -122,7 +133,6 @@ public class DevProfilerFull : MonoBehaviour
         float managed = Profiler.GetMonoUsedSizeLong() / (1024f * 1024f);
         float native = Profiler.GetTotalReservedMemoryLong() / (1024f * 1024f);
         int gcCount = System.GC.CollectionCount(0);
-        int threads = Process.GetCurrentProcess().Threads.Count;
 
         // Grafik kartı ve API bilgileri
         string api = SystemInfo.graphicsDeviceType.ToString();
@@ -151,7 +161,9 @@ public class DevProfilerFull : MonoBehaviour
         gcText.text = $"{t["GC"]}: {gcCount}";
         apiText.text = $"{t["API"]}: {api}";
         gpuNameText.text = $"{t["GPUName"]}: {gpuName}";
-        threadText.text = $"{t["Threads"]}: {threads}";
+
+        // CPU kullanımını hesapla ve göster
+        UpdateCPUUsageLabel(t["CPU"]);
 
         // Bellek barlarını güncelle
         barUsed.fillAmount = Mathf.Clamp01(used / limit);
@@ -161,16 +173,39 @@ public class DevProfilerFull : MonoBehaviour
         UpdateFrameHistory(fps);
     }
 
+    // FPS geçmişini güncelleyen yardımcı metot
+    void UpdateFrameHistory(float fps)
+    {
+        if (frameHistory.Count == 0) return;
+        Color color = fps >= 50 ? Color.green : (fps >= 30 ? Color.yellow : Color.red);
+        frameHistory[historyIndex].color = color;
+        historyIndex = (historyIndex + 1) % historyLength;
+    }
+
+    // CPU kullanımını hesaplayıp label'a yazan metot
+    void UpdateCPUUsageLabel(string label)
+    {
+        Process process = Process.GetCurrentProcess();
+        float currentTime = Time.realtimeSinceStartup;
+        float currentTotalProcessorTime = (float)process.TotalProcessorTime.TotalSeconds;
+
+        float cpuUsage = 100f * (currentTotalProcessorTime - lastTotalProcessorTime) / (currentTime - lastTime) / SystemInfo.processorCount;
+        cpuLabel.text = $"{label}: %{cpuUsage:F2}";
+
+        lastTime = currentTime;
+        lastTotalProcessorTime = currentTotalProcessorTime;
+    }
+
     // UI elemanlarını oluşturan yardımcı metot
     void CreateUI()
     {
-        // Canvas oluştur
+        // Canvas oluşturuluyor
         GameObject canvasObj = new GameObject("ProfilerCanvas");
         Canvas canvas = canvasObj.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvasObj.AddComponent<GraphicRaycaster>();
 
-        // Panel oluştur
+        // Panel oluşturuluyor
         GameObject panel = CreatePanel(canvasObj.transform, new Vector2(450, 430), new Vector2(0, 1), new Vector2(0, 1), new Vector2(10, -10));
 
         float y = -10;
@@ -192,7 +227,7 @@ public class DevProfilerFull : MonoBehaviour
 
         // Bellek ve diğer metinler
         usedMemText = CreateLabel(panel.transform, new Vector2(10, y));
-        peakMemText = CreateLabel(panel.transform, new Vector2(150, y));
+        peakMemText = CreateLabel(panel.transform, new Vector2(170, y));
         limitMemText = CreateLabel(panel.transform, new Vector2(300, y)); y -= 25;
 
         managedMemText = CreateLabel(panel.transform, new Vector2(10, y)); y -= 20;
@@ -200,7 +235,9 @@ public class DevProfilerFull : MonoBehaviour
         gcText = CreateLabel(panel.transform, new Vector2(10, y)); y -= 20;
         apiText = CreateLabel(panel.transform, new Vector2(10, y)); y -= 20;
         gpuNameText = CreateLabel(panel.transform, new Vector2(10, y)); y -= 20;
-        threadText = CreateLabel(panel.transform, new Vector2(10, y));
+
+        // CPU kullanım label'ı (TextMeshPro)
+        cpuLabel = CreateCPULabel(panel.transform, new Vector2(10, y));
     }
 
     // Panel oluşturan yardımcı metot
@@ -235,6 +272,28 @@ public class DevProfilerFull : MonoBehaviour
         txt.alignment = TextAnchor.MiddleLeft;
         txt.text = "...";
         return txt;
+    }
+
+    // CPU label'ı oluşturan yardımcı metot (TextMeshPro)
+    TextMeshProUGUI CreateCPULabel(Transform parent, Vector2 anchoredPos)
+    {
+        GameObject obj = new GameObject("CPULabel", typeof(RectTransform));
+        obj.transform.SetParent(parent);
+
+        RectTransform rect = obj.GetComponent<RectTransform>();
+        rect.sizeDelta = new Vector2(300, 24);
+        rect.anchorMin = new Vector2(0, 1);
+        rect.anchorMax = new Vector2(0, 1);
+        rect.pivot = new Vector2(0, 1);
+        rect.anchoredPosition = anchoredPos;
+
+        TextMeshProUGUI tmp = obj.AddComponent<TextMeshProUGUI>();
+        tmp.text = "CPU: ...";
+        tmp.fontSize = 18;
+        tmp.color = Color.green;
+        tmp.alignment = TextAlignmentOptions.MidlineLeft;
+
+        return tmp;
     }
 
     // Bellek barı oluşturan yardımcı metot
@@ -286,15 +345,6 @@ public class DevProfilerFull : MonoBehaviour
             img.color = Color.black;
             frameHistory.Add(img);
         }
-    }
-
-    // FPS geçmişini güncelleyen yardımcı metot
-    void UpdateFrameHistory(float fps)
-    {
-        if (frameHistory.Count == 0) return;
-        Color color = fps >= 50 ? Color.green : (fps >= 30 ? Color.yellow : Color.red);
-        frameHistory[historyIndex].color = color;
-        historyIndex = (historyIndex + 1) % historyLength;
     }
 }
 
