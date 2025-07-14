@@ -49,5 +49,4 @@ MIT License
 
 ---
 
-**Feel free to contribute!**  
-If you find this tool useful or want to improve it, pull requests are welcome.
+
