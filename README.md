@@ -25,7 +25,7 @@ This is a lightweight in-game profiler display for Unity that shows real-time pe
 
 Assets/
 └── Scripts/
-└── Profiler.cs
+└── SimpleProfiler.cs
 
 
 ## 🎯 Use Cases
